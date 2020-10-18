@@ -129,4 +129,5 @@ dmypy.json
 .pyre/
 
 #Large files
-data/extracted
+data/extracted/
+

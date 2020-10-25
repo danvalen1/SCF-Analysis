@@ -1,12 +1,20 @@
 import requests
 import zipfile
 import pandas as pd
+
+import waybackpy
+from datetime import datetime
+from dateutil.parser import parse
+import os
+
 import numpy as np
 
 from scipy import stats
 from statsmodels.formula.api import ols
 
 # Global variables
+
+archive_age_limit = 30
 
 rename_dict = {'yy1': 'household_id',
                    'y1': 'imputed_hh_id',
@@ -145,27 +153,44 @@ def SCF_load_data(targetdir, year, series=None):
                 SCF_data (pd.df): Data frame of imported SCF data with labels adjusted 
                 according to labels_dict in dataloading.py
     """
+    # Make targetdir if doesn't exist
+    if not os.path.isdir(targetdir):
+        os.mkdir(targetdir)
+    
     # Set target zip file and relevant url
-    targetzip = targetdir + f'SCF{str(year)}_data_public.zip'
     panel_string = 'p' if ((int(year)%3) != 0) else ''
     year = str(year)[-2:] if int(year) < 2002 else str(year)
     url = f'https://www.federalreserve.gov/econres/files/scf{str(year)}{panel_string}s.zip'
-        
+    file = url.rsplit('/', 1)[-1]
+    targetzip = targetdir + f'{file}'
+       
     # Return list of locations of extracted files   
     SCF_file_locs = URL_DL_ZIP(targetzip, targetdir, url) 
+    
+    # account for potential case issues
+    if series:
+            series = [x.upper() for x in series]
         
-    # Read into pandas df    
-    SCF_data = pd.read_stata(
-        SCF_file_locs[0],
-        #insert a list of variables or 'None' to get all
-        columns=series)
+    # Read into pandas df
+    try:
+        SCF_data = pd.read_stata(
+            SCF_file_locs[0],
+            #insert a list of variables or 'None' to get all
+            columns=series)
+    except:
+        series = [x.lower() for x in series]
+        SCF_data = pd.read_stata(
+            SCF_file_locs[0],
+            #insert a list of variables or 'None' to get all
+            columns=series)
     
     # Rename some variables of interest
+    SCF_data.columns = [x.lower() for x in SCF_data.columns]
     SCF_data.rename(columns=rename_dict, inplace=True)
     return SCF_data
 
 def URL_DL_ZIP(targetzip, targetdir, url):
-    """Downloads and unzips zip file from url and return locations of extracted filed.
+    """Downloads and unzips zip file from url and return locations of extracted files.
     
             Parameters:
                 targetzip (str): String indicating where zip file is to be saved.
@@ -174,24 +199,116 @@ def URL_DL_ZIP(targetzip, targetdir, url):
             Returns:
                 file_locs (list of str): Returns locations for all the extracted files.
     """
-        
+    archive_url = archive(url=url, targetdir=targetdir).get('archive_url')
+    
     # Save Zip from archived site
-    r = requests.get(url)
+    r_archive = requests.get(archive_url)
+    r_url = requests.get(url)
+    try:
+        r = r_archive
+        file_locs = Unzip(targetzip, r)
+        
+    except:
+        r = r_url
+        file_locs = Unzip(targetzip, r)
+        
+        
+    return file_locs
+    
+
+def Unzip(targetzip, r):
+    """Unzip a file from a url.
+    
+            Parameters:
+                r (response object): Response from url where zip file exists.
+                targetzip (str): String of path to target zip file.
+            Returns:
+                file_locs (list of str): Returns locations for all the extracted files.
+    
+    """
+    
     with open(targetzip,'wb') as f: 
         f.write(r.content)
     
-    # Unzipping file
-    with zipfile.ZipFile(targetzip, 'r') as zip_ref:
-        zip_ref.extractall(targetdir)
-        # Get list of files names in zip
-        files = zip_ref.namelist()
+    # Set and/or create sub-folder
+    sub_folder = targetzip.rsplit('.', 1)[0] +'/'
+    try:
+        os.mkdir(sub_folder)
+    except:
+        pass
+    
+    # Unzipping file        
+    try:
+        
+        with zipfile.ZipFile(targetzip, 'r') as zip_ref:
+            zip_ref.extractall(sub_folder)
+            # Get list of files names in zip
+            files = zip_ref.namelist()
+    except:
+        raise
+
+        
         
     # Return list of locations of extracted files   
     file_locs = [] 
     for file in files:
-        file_locs.append(targetdir + file)
-        
+        file_locs.append(sub_folder + file)
+    
     return file_locs
+
+def archive(url, targetdir=None):
+    """Archives URL and saves information to data log in targetdir based on archive age limit.
+    
+            Parameters:
+                url (str): String indicating where data exists.
+                targetdir (str): String indicating where files' data log exists.
+        
+            Returns:
+                archive_dict (dict): Dictionary with URL and timestamp of latest archive.
+    """
+    archive_dict = {'archive_url': None, 'archive_time': None}
+    wayback_obj = waybackpy.Url(url=url)
+    archive_age = len(wayback_obj)
+    
+    # Create new archive if age is greater than limit, else use most recent
+    if archive_age > archive_age_limit:
+        archive_dict['archive_url'] = wayback_obj.save().archive_url
+        archive_dict['archive_time'] = datetime.utcnow()
+        new_archive = 1
+    else:
+        archive_dict['archive_url'] = wayback_obj.archive_url
+        archive_dict['archive_time'] = wayback_obj.timestamp
+        new_archive = 0
+    
+    # Dict of data about archive
+    d = {'URL': [url],
+         'File': [url.rsplit('/', 1)[-1]],
+         'Directory': [targetdir],
+         'ArchiveURL': [archive_dict['archive_url']],
+         'ArchiveTime': [archive_dict['archive_time']],
+         'NewArchive': [new_archive]
+        }
+        
+    # Add to or create data log
+    try:
+        data_log = pd.read_csv(f'{targetdir}+_data_log.csv', index_col='LogID')
+        data_log['ArchiveTime'] = [parse(x) for x in data_log['ArchiveTime']]
+        d['LogID'] = data_log.index.values.max() + 1
+    
+        d = pd.DataFrame.from_dict(d)
+        d.set_index('LogID', inplace=True)
+    
+        data_log = pd.concat([d, data_log]).drop_duplicates(keep='last')
+        
+    except:
+        d['LogID'] = 1
+        data_log = pd.DataFrame(data=d)
+        data_log.set_index('LogID', inplace=True)
+   
+    data_log.to_csv(f'{targetdir}+_data_log.csv', index_label='LogID')
+    
+    return archive_dict
+    
 
 def clean_df(df, query):
     

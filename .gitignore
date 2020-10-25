@@ -129,7 +129,7 @@ dmypy.json
 .pyre/
 
 #Large files
-data/extracted/p19i6.dta
+data/extracted/
 
 
 

@@ -4,14 +4,9 @@ import pandas as pd
 import numpy as np
 
 from scipy import stats
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import MinMaxScaler
 from statsmodels.formula.api import ols
 
-"""Global variables used below.
-
-"""
+# Global variables
 
 rename_dict = {'yy1': 'household_id',
                    'y1': 'imputed_hh_id',
@@ -137,17 +132,24 @@ vars_for_calc = (LOC_owed_list
 sel_vars = (list(rename_dict.keys()) 
             + vars_for_calc
            )
-"""Functions for loading and cleaning below
-"""
 
 
-def SCF_load_data(targetdir, year, series):
-    ## Saves SCF data from 1989 onwards as df
+def SCF_load_data(targetdir, year, series=None):
+    """Loads SCF data for a given year into pandas data frame. Limited to 1989 and on. 
+    
+            Parameters:
+                targetdir (str): String indicating where you want files saved.
+                year (str or int): Indicating the year of SCF wanted.
+                series (list of strings): Indicating subset of data requested.
+            Returns:
+                SCF_data (pd.df): Data frame of imported SCF data with labels adjusted 
+                according to labels_dict in dataloading.py
+    """
     # Set target zip file and relevant url
-    targetzip = targetdir + f'SCF{year}_data_public.zip'
+    targetzip = targetdir + f'SCF{str(year)}_data_public.zip'
     panel_string = 'p' if ((int(year)%3) != 0) else ''
     year = str(year)[-2:] if int(year) < 2002 else str(year)
-    url = f'https://www.federalreserve.gov/econres/files/scf{year}{panel_string}s.zip'
+    url = f'https://www.federalreserve.gov/econres/files/scf{str(year)}{panel_string}s.zip'
         
     # Return list of locations of extracted files   
     SCF_file_locs = URL_DL_ZIP(targetzip, targetdir, url) 
@@ -163,6 +165,15 @@ def SCF_load_data(targetdir, year, series):
     return SCF_data
 
 def URL_DL_ZIP(targetzip, targetdir, url):
+    """Downloads and unzips zip file from url and return locations of extracted filed.
+    
+            Parameters:
+                targetzip (str): String indicating where zip file is to be saved.
+                targetdir (str): String indicating where files are to be extracted.
+                url (str): URL where the zip exists.
+            Returns:
+                file_locs (list of str): Returns locations for all the extracted files.
+    """
         
     # Save Zip from archived site
     r = requests.get(url)
@@ -188,109 +199,27 @@ def clean_df(df, query):
     
 
     ## Lines of credit
-    LOC_owed_list = ['x1108',
-                     'x1119',
-                     'x1130',
-                     'x1136'
-                    ]
 
-    df['LOC_owed_now'] = (df['x1108']
-                        + df['x1119']
-                        + df['x1130']
-                        + df['x1136']
-                       )
+    df['LOC_owed_now'] = df[LOC_owed_list].sum(axis=1)
 
     ## Education loans
-    educ_loans_owed_list = ['x7824',
-                            'x7847',
-                            'x7870',
-                            'x7924',
-                            'x7947',
-                            'x7970',
-                            'x7179'
-                           ]
 
-    df['ed_loans_owed_now'] = (df['x7824']
-                               + df['x7847']
-                               + df['x7870']
-                               + df['x7924']
-                               + df['x7947']
-                               + df['x7970']
-                               + df['x7179']
-                              )
+    df['ed_loans_owed_now'] = df[educ_loans_owed_list].sum(axis=1)
 
 
 
-    ## Relatives living in HH
-
-
-    person_types_in_HH = ['x8020', 
-                          'x102',
-                          'x108',
-                          'x114',
-                          'x120',
-                          'x126',
-                          'x132',
-                          'x202',
-                          'x208',
-                          'x214',
-                          'x220',
-                          'x226'
-                         ]
 
     ## CREDIT cards
-    cc_newcharges_list = ['x412',
-                     'x420',
-                     'x426'
-                    ]
+    df['cc_newcharges_value'] = df[cc_newcharges_list].sum(axis=1)
 
-    df['cc_newcharges_value'] = (df['x412']
-                         + df['x420']
-                         + df['x426']
-                        )
-
-    cc_currbal_list = ['x413',
-                     'x421',
-                     'x427'
-                    ]
-
-    df['cc_currbal_value'] = (df['x413']
-                         + df['x421']
-                         + df['x427']
-                        )
+    df['cc_currbal_value'] = df[cc_currbal_list].sum(axis=1)
 
     ## CHECKING Nos. 1-6 have detailed data, 7 is remaining accounts
-
-    checking_accts_list = ['x3506',
-                           'x3510',
-                           'x3514',
-                           'x3518',
-                           'x3522',
-                           'x3526',
-                           'x3529'
-                          ]
-
-    df['checking_accts_value'] = (df['x3506']
-                                  + df['x3510']
-                                  + df['x3514']
-                                  + df['x3518']
-                                 + df['x3522']
-                                 + df['x3526']
-                                 + df['x3529']
-                                 )
+    df['checking_accts_value'] = df[checking_accts_list].sum(axis=1)
+    
 
     ## SAVINGS accts
 
-
-    ## Nos. 1-6 have detailed data, 7 is remaining accounts
-    savings_accts_list = ['x3730',
-                          'x3736',
-                          'x3742',
-                          'x3748',
-                          'x3754',
-                          'x3760',
-                          'x3765'
-                         ]
 
     savings_accts_types = [df['x3732'],
                               df['x3738'],
@@ -308,19 +237,12 @@ def clean_df(df, query):
                   else 0) 
                  for x, y in zip(n, df[i])]
 
-    df['savings_accts_value'] = (df['x3730']
-                                  + df['x3736']
-                                  + df['x3742']
-                                  + df['x3748']
-                                 + df['x3754']
-                                 + df['x3760']
-                                 + df['x3765']
-                                )
+    df['savings_accts_value'] = df[savings_accts_list].sum(axis=1)
     
-    # drop columns that are aggregated into columns calculated above
+    ## drop columns that are aggregated into columns calculated above
     df.drop(columns=vars_for_calc, inplace=True)
     
-    # liquid net worth 
+    ## liquid net worth 
     df['lqd_assets'] = (df['savings_accts_value']
                         + df['checking_accts_value']
                         + df['mutual_funds_value']
@@ -342,6 +264,7 @@ def clean_df(df, query):
                                             else 0))))) for x in df['ref_educ']]
     for i, n in zip(range(5), ['doctorate_deg', 'professional_deg', 'master_deg', 'college_deg', 'hs_deg']):
         df[n] = [1 if x == (i+1) else 0 for x in df['educ_bins']]
+        
     # education bins for reference person mom
     df['mom_educ_bins'] = [(2 if x == 12 
                         else (1 if x == 9
@@ -368,23 +291,29 @@ def clean_df(df, query):
     return df
 
 def RII(df, Xseries, y):
+    """Performs OLS linear regression for repeated-imputation inference predicting y with 
+    Xseries and return p-values and coefficients.
+    
+            Parameters:
+                df (pd.df): Pandas data frame containing features and target variable.
+                Xseries (list of str): List containing features of model.
+                y (str): Target variables of model.
+            Returns:
+                file_locs (list of str): Returns locations for all the extracted files.
+    """
     list_coeff_vectors = {}
     list_var_vectors ={}
-    coeff_var_vectors = [list_coeff_vectors, list_var_vectors]
+    coeff_var_vectors = {'coeff_vectors': list_coeff_vectors, 'var_covar': list_var_vectors}
     
     for i in range(5):
         # narrowing df to ith implicate
-        df_imp = df[df.implicate == (i+1)]
+        df_imp = df[df.implicate == (i+1)] 
         
-        # adjusting rel_weight to be proportionate to df size
-        total = df_imp.rel_weight.sum()
-        df_imp['rel_weight'] = [x / total for x in df_imp['rel_weight']] 
-        
-        # weighting each data point based on rel_weight
+        # weighting each data point
         for n in list(df_imp.keys())[3:-3]:
-            df_imp[n] = [float(x) * float(y) for x,y in zip(df_imp[n], df['rel_weight'])]
+            df_imp[n] = [float(x) * float(y) for x,y in zip(df_imp[n], df['across_imp_weighting'])]
             
-        # regression of ith implicate dataset
+        # regression of ith implicate dataset with constant
         formula = f'{y}~' + "+".join(Xseries) 
         lr = ols(formula=formula, 
              data=df_imp).fit()
@@ -405,7 +334,25 @@ def RII(df, Xseries, y):
 
 
 def p_vals(output, Xseries):
-    coeffs = output[0]
+    """Returns p-values given output of coefficients and variance-covariance matrices. 
+    
+            Parameters:
+                output (dict of dicts):
+                    'coeff_vectors': Dictionary with keys = implicate number and values 
+                    being 1xk vectors of k coefficients in linear model for each implicate.
+                    
+                    'var_covar': Dictionary with keys = implicate number and values 
+                    being kxk variance-covariance matrices for each implicate.
+                    
+                Xseries (list of str): Strings of independent variables in model.
+            Returns:
+                p_dict (dict of dicts): Keys are each of the independent variables and
+                values are dictionaries containing p-values and coefficients.
+    """
+    
+    #Instantiate coefficients from output
+    coeffs = output['coeff_vectors']
+    
     #num of imputations
     m = 5
     
@@ -447,8 +394,11 @@ def p_vals(output, Xseries):
 
     # avg of variance-cov matrices
     summand_set = np.zeros((k,k))
-    var_matrices = output[1]
-
+    
+    #instantiate var-covar matrices
+    var_matrices = output['var_covar']
+    
+    
     for i in range(m):
         i+=1
         summand = var_matrices[i]
@@ -476,12 +426,13 @@ def p_vals(output, Xseries):
     # Degrees of freedom
     v = ((m-1)
          *(1+R_m**(-1))**(2))
-
+    
+    # P-values  
     p_values = []
     for i in range(k):
         p_values.append(stats.t.sf(abs(t_stats[i][i]), df=v[i][i])*2) 
 
-    # P-values    
+    # Store p-values into dict    
     p_dict = {}
     X_vars = ['intercept'] + Xseries
     

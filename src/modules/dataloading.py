@@ -317,7 +317,8 @@ def archive(url, targetdir=None):
     
 
 def clean_SCF_df(df, query=None):
-    
+    # Averaging all values
+    df = df.groupby("household_id").mean()
 
     ## Lines of credit
 
@@ -363,18 +364,20 @@ def clean_SCF_df(df, query=None):
                         + df['trusts_cash_value']
                         + df['life_ins_cash_value']
                        )
-    # Create target variable
-    df['1k_target'] = [1 if x > 1000 else 0 for x in df['lqd_assets']]
+
     
     # education bins for reference person
-    df['educ_bins'] = [(5 if x >= 14 
-                        else (4 if x == 13
-                             else (3 if x == 12
-                                  else (2 if x >= 10
-                                       else (1 if x >= 8
+    df['educ_bins'] = [(5 if x >= 14 # Doctorate's and JDs/MDs
+                        else (4 if x == 13 # Masters
+                             else (3 if x == 12 # Bacehlors
+                                  else (2 if x >= 10 # Associates
+                                       else (1 if x >= 8 # HS
                                             else 0))))) for x in df['ref_educ']]
-    for i, n in zip(range(5), ['doctorate_deg', 'professional_deg', 'master_deg', 'college_deg', 'hs_deg']):
+    for i, n in zip(range(5), ['doctorate_deg', 'master_deg', 'bachelor_deg', 'assoc_deg', 'hs_deg']):
         df[n] = [1 if x == (i+1) else 0 for x in df['educ_bins']]
+        
+    # Create target variable
+    df['1k_target'] = [1 if x > 1000 else 0 for x in df['lqd_assets']]
         
     # education bins for reference person mom
 #     df['mom_educ_bins'] = [(2 if x == 12 
@@ -390,17 +393,10 @@ def clean_SCF_df(df, query=None):
 #     for i, n in zip(range(2), ['dad_college_deg', 'dad_hs_deg']):
 #         df[n] = [1 if x == (i+1) else 0 for x in df['dad_educ_bins']]
     
-    # weights/stats
-    df['implicate'] = [x - y*10 for x, y in zip(df['imputed_hh_id'], df['household_id'])]
-    
-    # Averaging all values
-    df = df.groupby("household_id").mean()
-    
     # fill nulls
     df.fillna(value=0, inplace=True)
     
     #reducing to pop of interest
-    df.drop(labels=['imputed_hh_id', 'implicate'], axis=1, inplace=True)
     if query is not None:    
         df = df[query]
                         

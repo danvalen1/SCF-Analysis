@@ -21,15 +21,25 @@ labels_dict = {'lqd_assets': 'Liquid Assets ($)',
 ticks_dict = {'PESEX_x': ['Male', 'Female']
              }
 
-def lqdassetsViz(df, targetdir, weighted=False):
-    if weighted:
+def lqdassetsViz(df, targetdir, stat="count", weighted=False, both=False):
+    """Visualizes the liquid assets of households in the Survey of Consumer Finances.
+    
+    Parameters
+    
+    Returns
+    
+    """
+    if weighted & both:
+        weights = df.weighting.values
+        weights_str = " (Weighted and Unweighted)"
+    elif weighted:
         weights = df.weighting.values
         weights_str = " (Weighted)"
     else:
         weights = None
         weights_str = " (Unweighted)"
         
-    title = f"Distribution of Liquid Assets\nAmong U.S. Households{weights_str}"
+    title = f"Cumulative Distribution of Liquid Assets\nAmong U.S. Households{weights_str}"
     xvar = 'lqd_assets'
     
     
@@ -38,13 +48,23 @@ def lqdassetsViz(df, targetdir, weighted=False):
     fig, ax = plt.subplots(figsize=(15,12))
     sns.ecdfplot(x=df[xvar],
                  linewidth=4.5,
-                 stat="count",
-                 weights=weights
+                 stat=stat,
+                 weights=weights,
+                 color='#8A2423'
                 )
+    if weighted & both:
+        sns.ecdfplot(x=df[xvar],
+                     linewidth=4.5,
+                     stat=stat,
+                     weights=None,
+                     color='#303030'
+                    )
+        fig.legend(labels=["Weighted", "Unweighted"], loc="center right")
     
     # Adjust count for readability
-    ax.get_yaxis().set_major_formatter(
-    matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+    if stat == "count":
+        ax.get_yaxis().set_major_formatter(
+        matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
     
     # Labels and titles
     ax.set(title=f'{title}',

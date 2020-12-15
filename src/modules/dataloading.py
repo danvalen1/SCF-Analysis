@@ -146,6 +146,13 @@ sel_vars = (list(rename_dict.keys())
             + vars_for_calc
            )
 
+negtozero_list = ['ref_race',
+                  'ref_educ',
+                  'spouse_educ',
+                  'total_income',
+                  'life_ins_cash_value'
+                 ]
+
 
 def SCF_load_data(targetdir, year, series=sel_vars):
     """Loads SCF data for a given year into pandas data frame. Limited to 1989 and on. 
@@ -378,6 +385,10 @@ def clean_SCF_df(df, query=None):
         
     # Create target variable
     df['1k_target'] = [1 if x > 1000 else 0 for x in df['lqd_assets']]
+    
+    # Clean list of variables that have negative values
+    for var in negtozero_list:
+        df[var] = [0 if x < 0 else x for x in df[var]]
         
     # education bins for reference person mom
 #     df['mom_educ_bins'] = [(2 if x == 12 

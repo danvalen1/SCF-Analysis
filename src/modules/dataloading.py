@@ -40,20 +40,8 @@ rename_dict = {'yy1': 'household_id',
                    'x7412': 'spouse_industry_code',
                    'x7401': 'ref_occ_code', # 1 is white-collar/services, 2 is front-line clerks/sales, 3 public institutions/entertainemnt front-line, 4 artisans, 5 industrial workers, 6 industrial managers
                    'x7411': 'spouse_occ_code',
-#                    'x501': 'primary_home_type', # 2 is mobile home, 2 is house/apt, 3 ranch, 5 farm
-#                    'x7136': 'chance_staying_home', # 0 - 100
-#                        'x6026': 'ref_mom_living',
-#                        'x6120': 'spouse_mom_living',
-#                        'x6032': 'ref_mom_educ',
-#                        'x6132': 'spouse_mom_educ',
-#                        'x6027': 'ref_mom_age', ## FOR THE PUBLIC DATA SET, PARENTS' AGES ROUNDED TO NEAREST AND TOP-CODED AT 95
-#                        'x6121': 'spouse_mom_age',
-#                        'x6028': 'ref_dad_living',
-#                        'x6122': 'spouse_dad_living',
-#                        'x6033': 'ref_dad_educ',
-#                        'x6133': 'spouse_dad_educ',
-#                        'x6029': 'ref_dad_age',
-#                        'x6123': 'spouse_dad_age',
+                   'x501': 'primary_home_type', # 2 is mobile home, 2 is house/apt, 3 ranch, 5 farm
+
                   'x5729': 'total_income',
                   'x7650': 'income_comparison', # 1 is high, 2 is low, 3 is normal compared to normal year
                   'x5802': 'inheritances',
@@ -323,7 +311,7 @@ def archive(url, targetdir=None):
     return archive_dict
     
 
-def clean_SCF_df(df, query=None):
+def clean_SCF_df(df, neg_vals=False, query=None):
     # Averaging all values
     df = df.groupby("household_id").mean()
 
@@ -371,7 +359,6 @@ def clean_SCF_df(df, query=None):
                         + df['trusts_cash_value']
                         + df['life_ins_cash_value']
                        )
-
     
     # education bins for reference person
     df['educ_bins'] = [(5 if x >= 14 # Doctorate's and JDs/MDs
@@ -387,22 +374,9 @@ def clean_SCF_df(df, query=None):
     df['1k_target'] = [1 if x > 1000 else 0 for x in df['lqd_assets']]
     
     # Clean list of variables that have negative values
-    for var in negtozero_list:
-        df[var] = [0 if x < 0 else x for x in df[var]]
-        
-    # education bins for reference person mom
-#     df['mom_educ_bins'] = [(2 if x == 12 
-#                         else (1 if x == 9
-#                              else 0)) for x in df['ref_mom_educ']]
-#     for i, n in zip(range(2), ['mom_college_deg', 'mom_hs_deg']):
-#         df[n] = [1 if x == (i+1) else 0 for x in df['mom_educ_bins']]
-        
-    # education bins for reference person dad
-#     df['dad_educ_bins'] = [(2 if x == 12 
-#                         else (1 if x == 9
-#                              else 0)) for x in df['ref_dad_educ']]
-#     for i, n in zip(range(2), ['dad_college_deg', 'dad_hs_deg']):
-#         df[n] = [1 if x == (i+1) else 0 for x in df['dad_educ_bins']]
+    if neg_vals == False:
+        for var in negtozero_list:
+            df[var] = [0 if x < 0 else x for x in df[var]]
     
     # fill nulls
     df.fillna(value=0, inplace=True)
@@ -413,188 +387,6 @@ def clean_SCF_df(df, query=None):
                         
     return df
 
-def RII(df, Xseries, y):
-    """Performs OLS linear regression for repeated-imputation inference predicting y with 
-    Xseries and return p-values and coefficients.
-    
-            Parameters:
-                df (pd.df): Pandas data frame containing features and target variable.
-                Xseries (list of str): List containing features of model.
-                y (str): Target variables of model.
-            Returns:
-                file_locs (list of str): Returns locations for all the extracted files.
-    """
-    list_coeff_vectors = {}
-    list_var_vectors ={}
-    coeff_var_vectors = {'coeff_vectors': list_coeff_vectors, 'var_covar': list_var_vectors}
-    
-    for i in range(5):
-        # narrowing df to ith implicate
-        df_imp = df[df.implicate == (i+1)] 
-        
-        # weighting each data point
-        for n in list(df_imp.keys())[3:-3]:
-            df_imp[n] = [float(x) * float(y) for x,y in zip(df_imp[n], df['across_imp_weighting'])]
-            
-        # regression of ith implicate dataset with constant
-        formula = f'{y}~' + "+".join(Xseries) 
-        lr = ols(formula=formula, 
-             data=df_imp).fit()
-        
-        # vectors of regression coeff for ith implicate
-        coeff_vector = np.array([lr.params.tolist()])
-        list_coeff_vectors[i+1]=coeff_vector
-        
-
-        # var-covar matrix for ith impliciate
-        var_covar_matrix = lr.cov_params().to_numpy()
-
-        list_var_vectors[i+1]=var_covar_matrix
-    
-    output_dict = p_vals(coeff_var_vectors, Xseries=Xseries)
-    
-    return output_dict
-
-
-def p_vals(output, Xseries):
-    """Returns p-values given output of coefficients and variance-covariance matrices. 
-    
-            Parameters:
-                output (dict of dicts):
-                    'coeff_vectors': Dictionary with keys = implicate number and values 
-                    being 1xk vectors of k coefficients in linear model for each implicate.
-                    
-                    'var_covar': Dictionary with keys = implicate number and values 
-                    being kxk variance-covariance matrices for each implicate.
-                    
-                Xseries (list of str): Strings of independent variables in model.
-            Returns:
-                p_dict (dict of dicts): Keys are each of the independent variables and
-                values are dictionaries containing p-values and coefficients.
-    """
-    
-    #Instantiate coefficients from output
-    coeffs = output['coeff_vectors']
-    
-    #num of imputations
-    m = 5
-    
-    #num of coefficients
-    k = len(coeffs[1][0])
-
-    #  point estimates for each coeff 
-    s = []
-    for n in range(k):
-        s.append([])
-
-
-    for i in range(m):
-        i += 1
-        for n in range(k):
-            s[n].append(coeffs[i][0][n])
-
-    Qm_bar = []    
-    for n in range(k):
-
-        ssum = sum(s[n]) / m
-        Qm_bar.append(ssum)
-
-    Qm_bar = np.array([Qm_bar])    
-
-
-    # var-cov matrix of point estimates
-    summand_set = np.zeros((k, k))
-    for i in range(m):
-        i+=1
-        var = coeffs[i] - Qm_bar
-
-        summand = var.T * var
-
-        summand_set = summand_set + summand
-
-    Bm = summand_set / (m-1)
-
-
-    # avg of variance-cov matrices
-    summand_set = np.zeros((k,k))
-    
-    #instantiate var-covar matrices
-    var_matrices = output['var_covar']
-    
-    
-    for i in range(m):
-        i+=1
-        summand = var_matrices[i]
-
-        summand_set = summand_set + summand
-
-    Um_bar = summand_set/m
-
-
-    # total variance of regression coeff.
-    Tm = Um_bar + (1 + m**(-1))*Bm
-
-
-    # std dev of regression coeff.
-    Stddev = Tm**(1/2)
-
-    # t stats of regression coeff.
-    t_stats = Qm_bar/Stddev
-
-
-    # Relative increase in variance due to nonresponse
-    R_m =  ((1 + m**(-1))*Bm
-          / Um_bar)
-
-    # Degrees of freedom
-    v = ((m-1)
-         *(1+R_m**(-1))**(2))
-    
-    # P-values  
-    p_values = []
-    for i in range(k):
-        p_values.append(stats.t.sf(abs(t_stats[i][i]), df=v[i][i])*2) 
-
-    # Store p-values into dict    
-    p_dict = {}
-    X_vars = ['intercept'] + Xseries
-    
-    for i in range(k):
-        p_dict[X_vars[i]] = {}
-        p_dict[X_vars[i]]['p'] = p_values[i]
-        p_dict[X_vars[i]]['coeff'] = Qm_bar[0][i]
-   
-    return p_dict  
-
-
-
-"""EDUCATION
-     1.    *1st, 2nd, 3rd, or 4th grade
-                         2.    *5th or 6th grade
-                         3.    *7th and 8th grade
-                         4.    *9th grade
-                         5.    *10th grade
-                         6.    *11th grade
-                         7.    *12th grade, no diploma
-                         8.    *High school graduate - high school diploma or equivalent
-                         9.    *Some college but no degree
-                        10.    *Associate degree in college - occupation/vocation program
-                        11.    *Associate degree in college - academic program
-                        12.    *Bachelor's degree (for example: BA, AB, BS)
-                        13.    *Master's degree ( for exmaple: MA, MS, MENG, MED, MSW, MBA)
-                        14.    *Professional school degree (for example: MD, DDS, DVM, LLB, JD)
-                        15.    *Doctorate degree (for example: PHD, EDD)
-                        -1.    *Less than 1st grade
-                         0.     Inap. (no spouse/partner;)
-                    *********************************************************
-                        FOR THE PUBLIC DATA SET, CODES 2, 3, 4, 5, 6, AND 7
-                        ARE COMBINED WITH CODE 1; CODE 10 AND CODE 11 ARE
-                        COMBINED WITH CODE 9, AND; CODES 13, 14, AND 15 ARE
-                        COMBINED WITH CODE 12
-                    *********************************************************
-
-"""
-    
 """SAVINGS accounts
 
                      1.    *TRADITIONAL SAVINGS ACCOUNT; "passbook account";
@@ -620,33 +412,5 @@ def p_vals(output, Xseries):
                     FOR THE PUBLIC DATA SET, CODES 6, 14, AND 20 ARE
                     COMBINED WITH CODE 1; CODES 3 AND 7 ARE COMBINED
                     WITH CODE 2; CODE 30 IS COMBINED WITH CODE 12
-                *********************************************************
-"""
-    
-"""Relatives in HH
-                     1.    *RESPONDENT
-                     2.    *SPOUSE; Spouse of R
-                     3.    *PARTNER; Partner of R
-                     4.    *CHILD (in-law) (of R or Spouse/Partner)
-                     5.    *GRANDCHILD
-                     6.    *PARENT
-                     7.    *GRANDPARENT
-                     8.    *AUNT/UNCLE
-                     9.    *COUSIN
-                    10.    *NIECE/NEPHEW
-                    11.    *SISTER/BROTHER
-                    12.    *GREAT GRANDCHILD
-                    29.    *OTHER RELATIVE
-                    31.    *ROOMMATE
-                    32.    *FRIEND
-                    34.    *BOARDER OR ROOMER/LODGER
-                    35.    *PAID HELP; maid, etc.
-                    36.    *FOSTER CHILD
-                    39.    *OTHER UNRELATED PERSON
-                     0.     Inap. (no further persons)
-                *********************************************************
-                    FOR THE PUBLIC DATA SET, CODE 12 IS COMBINED WITH
-                    CODE 5; CODES 31, 32, AND 36 ARE COMBINED WITH CODE
-                    39; CODES 9 AND 10 ARE COMBINED WITH CODE 29
                 *********************************************************
 """

@@ -13,6 +13,8 @@ import numpy as np
 from scipy import stats
 from statsmodels.formula.api import ols
 
+from sklearn.preprocessing import OneHotEncoder
+
 # Global variables
 
 user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_0_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36'
@@ -20,18 +22,18 @@ user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_0_0) AppleWebKit/537.36 
 archive_age_limit = 30
 
 rename_dict = {'yy1': 'household_id',
-                   'y1': 'imputed_hh_id',
+#                    'y1': 'imputed_hh_id',
                    'x42001': 'weighting',
                    'x7001': 'persons_in_PEU',
                    'x7020': 'spouse_part_of_PEU', ## 1 is not in PEU, 2 is in
-                   'x102': 'ref_next_relative_type', ## 2 and 3 are spouses/partners, 1 is the respondent 
-                   'x8000': 'switch_of_resp_ref',
+#                    'x102': 'ref_next_relative_type', ## 2 and 3 are spouses/partners, 1 is the respondent 
+#                    'x8000': 'switch_of_resp_ref',
                    'x14': 'ref_age',
                    'x19': 'spouse_age',
                    'x8021': 'ref_sex',
                    'x103': 'spouse_sex',
                    'x6809': 'ref_race',
-                   'x6810': 'spouse_race',
+#                    'x6810': 'spouse_race',
                    'x5931': 'ref_educ', ## doctorate and profession combined as code 14
                    'x6111': 'spouse_educ',
                    'x6780': 'ref_UE_last_year', # UE or looking for work in last year
@@ -71,20 +73,6 @@ educ_loans_owed_list = ['x7824',
                             'x7970',
                             'x7179'
                            ]
-
-person_types_in_HH = ['x8020', 
-                          'x102',
-                          'x108',
-                          'x114',
-                          'x120',
-                          'x126',
-                          'x132',
-                          'x202',
-                          'x208',
-                          'x214',
-                          'x220',
-                          'x226'
-                         ]
 
 cc_newcharges_list = ['x412',
                      'x420',
@@ -134,13 +122,49 @@ sel_vars = (list(rename_dict.keys())
             + vars_for_calc
            )
 
-negtozero_list = ['ref_race',
-                  'ref_educ',
+negtozero_list = ['ref_educ',
                   'spouse_educ',
                   'total_income',
-                  'life_ins_cash_value'
+                  'life_ins_cash_value',
+                  'total_cc_limit',
+                  'num_fin_inst',
+                  'cc_newcharges_value',
+                  'cc_currbal_value',
+                  'checking_accts_value',
+                  'savings_accts_value',
+                  'lqd_assets'
                  ]
 
+onehot_vars = ['spouse_part_of_PEU',
+               'ref_sex',
+               'spouse_sex',
+               'ref_race', 
+               'ref_UE_last_year',
+               'spouse_UE_last_year',
+               'ref_industry_code',
+               'spouse_industry_code',
+               'ref_occ_code',
+               'spouse_occ_code',
+               'primary_home_type',
+               'income_comparison'
+              ]
+
+modeling_drop = ['educ_bins',
+                 'educ_bins_s',
+                 'savings_accts_value',
+                 'checking_accts_value',
+                 'lqd_assets',
+                 'life_ins_cash_value',
+                 'trusts_cash_value',
+                 'annuity_cash_value',
+                 'stock_mkt_value',
+                 'bonds_mkt_value',
+                 'mutual_funds_value',
+                 'inheritances',
+                 'weighting',
+                 'ref_educ',
+                 'spouse_educ'
+                ]
 
 def SCF_load_data(targetdir, year, series=sel_vars):
     """Loads SCF data for a given year into pandas data frame. Limited to 1989 and on. 
@@ -311,7 +335,7 @@ def archive(url, targetdir=None):
     return archive_dict
     
 
-def clean_SCF_df(df, neg_vals=False, query=None):
+def clean_SCF_df(df, neg_vals=False, query=None, modeling=False):
     # Averaging all values
     df = df.groupby("household_id").mean()
 
@@ -370,10 +394,22 @@ def clean_SCF_df(df, neg_vals=False, query=None):
     for i, n in zip(range(5), ['doctorate_deg', 'master_deg', 'bachelor_deg', 'assoc_deg', 'hs_deg']):
         df[n] = [1 if x == (i+1) else 0 for x in df['educ_bins']]
         
+    # education bins for spouse
+    df['educ_bins_s'] = [(5 if x >= 14 # Doctorate's and JDs/MDs
+                        else (4 if x == 13 # Masters
+                             else (3 if x == 12 # Bacehlors
+                                  else (2 if x >= 10 # Associates
+                                       else (1 if x >= 8 # HS
+                                            else 0))))) for x in df['spouse_educ']]
+    for i, n in zip(range(5), ['doctorate_deg_s', 'master_deg_s', 'bachelor_deg_s', 'assoc_deg_s', 'hs_deg_s']):
+        df[n] = [1 if x == (i+1) else 0 for x in df['educ_bins_s']]
+        
     # Create target variable
     df['1k_target'] = [1 if x > 1000 else 0 for x in df['lqd_assets']]
     
     # Clean list of variables that have negative values
+    df['ref_race'] = [-7 if x < 0 else x for x in df['ref_race']]
+    
     if neg_vals == False:
         for var in negtozero_list:
             df[var] = [0 if x < 0 else x for x in df[var]]
@@ -381,36 +417,21 @@ def clean_SCF_df(df, neg_vals=False, query=None):
     # fill nulls
     df.fillna(value=0, inplace=True)
     
+    #round all values
+    df = df.round()
+    
+    
+    
     #reducing to pop of interest
+    if modeling:
+        df.drop(columns=modeling_drop, inplace = True)
+        df['ref_UE_last_year'] = [1 if x < 1 else (5 if x > 2.5 else x) for x in df['ref_UE_last_year']]
+        df['spouse_UE_last_year'] = [1 if x < 1 else (5 if x > 2.5 else x) for x in df['spouse_UE_last_year']]
+        # Dummy variables
+        df = pd.get_dummies(df, columns=onehot_vars, drop_first=True)
+
+    
     if query is not None:    
         df = df[query]
                         
     return df
-
-"""SAVINGS accounts
-
-                     1.    *TRADITIONAL SAVINGS ACCOUNT; "passbook account";
-                            "statement account"
-                     2.    *COVERDELL/EDUCATION IRA
-                     3.    *529/STATE-SPONSORED EDUCATION ACCOUNT
-                     4.    *MONEY MARKET ACCOUNT
-                     5.     Christmas club account; other account for
-                            designated saving purpose (e.g., vacation)
-                     6.     Share account
-                     7.    *HEALTH SAVINGS ACCOUNT; medical savings account
-                    12.    *OTHER FLOATING-RATE SAVINGS ACCOUNT
-                            (other than those coded 4)
-                    14.     Informal group saving arrangement
-                    20.     Foreign account type
-                    30.    *SWEEP ACCOUNT n.e.c.; cash management account
-                    -7.    *OTHER
-                     0.     Inap. (no savings accounts: X3727^=1/fewer than 2
-                            accounts: X3728<2/fewer than 3 account: X3728<3/
-                            fewer than 4 accounts: X3728<4/fewer than 5
-                            accounts: X3728<5/fewer than 6 accounts)
-                *********************************************************
-                    FOR THE PUBLIC DATA SET, CODES 6, 14, AND 20 ARE
-                    COMBINED WITH CODE 1; CODES 3 AND 7 ARE COMBINED
-                    WITH CODE 2; CODE 30 IS COMBINED WITH CODE 12
-                *********************************************************
-"""

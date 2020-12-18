@@ -22,13 +22,7 @@ ticks_dict = {'PESEX_x': ['Male', 'Female']
              }
 
 def lqdassetsViz(df, targetdir, stat="count", weighted=False, both=False):
-    """Visualizes the liquid assets of households in the Survey of Consumer Finances.
-    
-    Parameters
-    
-    Returns
-    
-    """
+
     if weighted & both:
         weights = df.weighting.values
         weights_str = " (Weighted and Unweighted)"
@@ -79,4 +73,28 @@ def lqdassetsViz(df, targetdir, stat="count", weighted=False, both=False):
     fig.savefig(f'{targetdir}{title}.png', bbox_inches='tight')
     
     return  plt.show()
+
+def lqdassetsViz2(df, targetdir):
+    title = f"Distribution of Liquid Assets\nAmong U.S. Households"
+    xvar = 'lqd_assets'
+    
+    # Set up the matplotlib figure
+    fig = sns.displot(df,
+                      x=xvar,
+                      linewidth=4.5,
+                      color='#8A2423',
+                      kind='hist',
+                      height = 12,
+                      aspect = 15/12
+                     )
+    
+    plt.xscale('log')
+    plt.title(title)
+    plt.xlabel('Liquid Assets ($)')
+
+    plt.tight_layout()
+    
+    fig.savefig(f'{targetdir}{title}.png', bbox_inches='tight')
+    
+    return plt.show()
 

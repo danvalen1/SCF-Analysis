@@ -130,6 +130,7 @@ dmypy.json
 
 #Large files
 data/extracted/
+.gitattributes
 
 
 

@@ -19,11 +19,11 @@ labels_dict = {'Features': 'Features',
                
               }
 
-ticks_dict = {'LogRegCoeff': ['Num. of Fin. Inst.', 
-                              'Total Cred. Card Limit', 
-                              'Cred. Card New Charges', 
-                              'Bachelor Degree', 
-                              'White-Collar Occupation'
+ticks_dict = {'LogRegCoeff': ['Credit Cards - New Charges Amt.',
+                              'Total Income',
+                              'Credit Cards - Total Limit',
+                              'Num. of Financial Institutions', 
+                              'White-Collar Work'
                              ]
 
              }
@@ -50,7 +50,7 @@ def PlotCatCoeff(df, xvar,targetdir, yvar=None, orient=None, kind='count',palett
                 orient = orient,
                 height = figsize[1],
                 aspect = figsize[0]/figsize[1],
-                palette=palette
+                color='#8A2423'
                )
     plt.ylabel(yvar)
     plt.xlabel('Scale')

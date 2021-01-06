@@ -12,6 +12,13 @@ import sklearn.preprocessing as skp
 def baseline(targetdir):
     sets = xywSets(targetdir)
     X_train, X_test, y_train, y_test, w_train, w_test = train_test_split(sets['X'], sets['y'], sets['w'], random_state=1)
+    splits = {'X_train':X_train,
+              'X_test':X_test,
+              'y_train':y_train,
+              'y_test':y_train,
+              'w_train':w_train, 
+              'w_test':w_test}
+    
     logreg = LogisticRegression(max_iter=1000)
 
     # Fit to train data
@@ -27,7 +34,7 @@ def baseline(targetdir):
     y_pred_prob = logreg.predict_proba(X_test)[:, 1]
     AUC = metrics.roc_auc_score(y_test, y_pred_prob)
     
-    return {'F1':lr_f1, 'Precision':lr_prec, 'Recall':lr_rec, 'AUC':AUC, 'model':logreg}
+    return {'metrics':{'F1':lr_f1, 'Precision':lr_prec, 'Recall':lr_rec, 'AUC':AUC}, 'model':{'logreg':logreg, 'sets':{'orig':sets, 'splits':splits}}}
 
 def weighted(targetdir):
     sets = xywSets(targetdir)
@@ -62,7 +69,9 @@ def weighted(targetdir):
     y_pred_prob = grid_lr.best_estimator_.predict_proba(X_test)[:, 1]
     AUC = metrics.roc_auc_score(y_test, y_pred_prob)
     
-    return {'F1':lr_f1, 'Precision':lr_prec, 'Recall':lr_rec, 'AUC':AUC, 'model':grid_lr}
+    return {'metrics':{'F1':lr_f1, 'Precision':lr_prec, 'Recall':lr_rec, 'AUC':AUC}, 'model':{'grid':grid_lr, 'sets':{'orig':sets, 'splits':splits}}}
+
+
 
 def weightandscale(targetdir, iqr=(25,75), inc_drop=False, improved_params=False):
     sets = xywSets(targetdir, inc_drop)

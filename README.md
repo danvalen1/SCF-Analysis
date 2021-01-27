@@ -26,7 +26,7 @@ As one will see in the Results, the ability to overcome to overrepresentation of
 
 ## Results
 
-This model achieves an F1 score of 0.9159, an improvement of about .09 compared to baseline. This was primarily achieved by improving precision scores by accounting for the data's oversampling of high wealth households and the skewness of the distribution of liquid assets. 
+This model achieves an F1 score of 0.917, an improvement of .1 compared to baseline. This was primarily achieved by capturing more of the true positives in the data using `RobustScaler` to deal with outliers.
 
 ![scale](images/scale.png)
 
@@ -34,7 +34,7 @@ This model achieves an F1 score of 0.9159, an improvement of about .09 compared 
 
 Given the high F1 score of all the models presented here, one can conclude that the top features presented in each model that predict membership in the target class are likely to be features that Vanguard ought to search for.
 
-In the case of number of financial institutions, Vanguard may consider adopting services like Plaid that other financial services companies use to understand whether households use other services. Further, the final model presented here also reinforces any use of credit reports that Vanguard may use to market to households. Lastly, given that having a bachelor's degree is predictive of having enough money to invest with Vanguard, it may also make sense for Vanguard to improve its marketing to those who are just graduating college.
+In the case of number of financial institutions, Vanguard may consider adopting services like Plaid that other financial services companies use to understand whether households use other services. Further, the final model presented implies that credit card companies and Vanguard have similar customers. An area for further exploration for Vanguard would be to understand whether fruitful business partnerships between Vanguard and these credit card companeis can exist, such as offering zero management fees up to a certain number of assets for certain credit card holders.
 
 ## Repository Structure
 
